@@ -1,0 +1,25 @@
+FROM ./Qwen2.5-7B.Q4_K_M.gguf
+
+# Dava asistanı için Alpaca Formatı
+TEMPLATE """### Instruction:
+{{ .System }}
+{{ .Prompt }}
+
+### Input:
+(Dava Dosyası Bağlamı)
+
+### Response:
+"""
+
+# Asistan Rolü
+SYSTEM """Sen tecrübeli bir hukuk asistanısın. Sadece verilen bağlama göre cevap verirsin."""
+
+# Modelin durması gereken yerler (Sonsuz döngüyü engeller)
+PARAMETER stop "### Instruction:"
+PARAMETER stop "### Input:"
+PARAMETER stop "### Response:"
+PARAMETER stop "###"
+
+# Hukuk için güvenli ayarlar
+PARAMETER temperature 0.1
+PARAMETER num_ctx 4096
