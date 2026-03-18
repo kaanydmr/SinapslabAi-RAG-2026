@@ -1,250 +1,194 @@
-import os
-import torch
-import gc
-import tempfile
-import shutil
-import streamlit as st
-import ollama
-from langchain_classic.retrievers import ContextualCompressionRetriever
+"""
+main.py — Legal RAG + CAG Hybrid System entry point.
 
-# --- LangChain & Processing Imports ---
-from langchain_community.document_loaders import PyMuPDFLoader
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_experimental.text_splitter import SemanticChunker
-from langchain_chroma import Chroma
-# --- Reranking & Retrieval Importları (DÜZELTİLMİŞ HALİ) ---
-from langchain_community.document_compressors import FlashrankRerank
-from langchain_core.documents import Document
+Architecture:
+    User Query
+      → Turkish normalization (İ/I-aware, punctuation, stopwords)
+      → LLM paraphrase expansion (3 alternative phrasings)
+      → Multi-vector CAG Cache Search (FAISS)
+        → similarity ≥ 0.85 → Return cached answer (fast)
+        → else → RAG Pipeline (separate document index)
+          → Retrieve legal text chunks → Qwen3:8B → Generate answer
+          → Store new QA in CAG cache (with TTL)
 
-import os
-import torch
-import gc
-import tempfile
-import shutil
-import streamlit as st
-import ollama
+Usage:
+    python main.py --build       Build both CAG + RAG indexes
+    python main.py               Interactive query mode
+    python main.py --no-para     Interactive without paraphrase expansion
+"""
 
-# --- LangChain Importları ---
-from langchain_community.document_loaders import PyMuPDFLoader
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_experimental.text_splitter import SemanticChunker
-from langchain_chroma import Chroma
+import argparse
+import logging
+import sys
+import time
+from pathlib import Path
 
-from langchain_community.document_compressors import FlashrankRerank
-from langchain_core.documents import Document
+# Paths
+PROJECT_ROOT = Path(__file__).parent
+CACHE_DIR = PROJECT_ROOT / "cache"
+RAG_DIR = PROJECT_ROOT / "data"
 
-# -----------------------------
-# 1. Donanım ve Temizlik Ayarları
-# -----------------------------
-st.set_page_config(page_title="Smart VRAM RAG", layout="wide", page_icon="🧠")
+# Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("legal-hybrid")
 
 
-def clear_gpu_memory():
-    """GPU belleğini zorla boşaltır."""
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
-    print("🧹 GPU Belleği Temizlendi!")
+def do_build():
+    """Build both CAG cache and RAG document store from datasets."""
+    from src.build_cache import build_all
+    build_all(str(PROJECT_ROOT), str(CACHE_DIR), str(RAG_DIR))
 
 
-# -----------------------------
-# 2. Embedding Modelleri (GPU ve CPU Ayrımı)
-# -----------------------------
+def interactive_mode(use_paraphrases: bool = True):
+    """Interactive query mode: CAG cache first, RAG fallback."""
+    from src.cache_search import SemanticCache
+    from src.rag_pipeline import RAGPipeline
 
-def get_gpu_embedding():
-    """
-    PDF işlerken kullanılır. GPU'yu sömürür, işi hızlı bitirir.
-    DİKKAT: Bunu cache'lemiyoruz, işi bitince sileceğiz.
-    """
-    print("⚡ Embedding Modeli GPU'ya Yükleniyor...")
-    return HuggingFaceEmbeddings(
-        model_name="BAAI/bge-m3",
-        model_kwargs={"device": "cuda"},  # Zorla GPU
-        encode_kwargs={"normalize_embeddings": True, "batch_size": 32}
+    logger.info("=" * 60)
+    logger.info("TÜRK HUKUK RAG + CAG HİBRİT SİSTEMİ")
+    logger.info("Qwen3:8B via Ollama")
+    logger.info("=" * 60)
+
+    # Initialize CAG cache
+    cache = SemanticCache(str(CACHE_DIR), use_paraphrases=use_paraphrases)
+    cache_stats = cache.stats()
+
+    # Initialize RAG pipeline (share embedding model)
+    rag = RAGPipeline(str(RAG_DIR), model=cache.model)
+
+    logger.info(
+        f"CAG: {cache_stats['total_entries']} soru | "
+        f"RAG: {rag.index.ntotal} belge parçası"
     )
 
+    # UI
+    print("\n" + "=" * 60)
+    print("🇹🇷 Türk Hukuk RAG + CAG Yapay Zeka Asistanı")
+    print("=" * 60)
+    print(f"\n📦 Sistem Durumu:")
+    print(f"   CAG Önbellek:   {cache_stats['total_entries']} soru")
+    print(f"   RAG Belgeler:   {rag.index.ntotal} belge parçası")
+    print(f"   Paraphrase:     {'Açık ✅' if use_paraphrases else 'Kapalı ❌'}")
+    print(f"   Eşik değeri:    {cache.threshold}")
+    print("\nÖrnek sorular:")
+    print("  • Anayasa madde 1'e göre devlet şekli nedir?")
+    print("  • Egemenlik kime aittir?")
+    print("  • İşten çıkarılma hakları nelerdir?")
+    print("\nKomutlar:")
+    print("  stats  — Sistem istatistikleri")
+    print("  q      — Çıkış")
+    print()
 
-@st.cache_resource(show_spinner=False)
-def get_cpu_embedding():
-    """
-    Sohbet sırasında kullanılır. VRAM harcamaz, RAM kullanır.
-    """
-    print("🐢 Embedding Modeli CPU'ya Yükleniyor (Sohbet Modu)...")
-    return HuggingFaceEmbeddings(
-        model_name="BAAI/bge-m3",
-        model_kwargs={"device": "cpu"},  # Zorla CPU
-        encode_kwargs={"normalize_embeddings": True, "batch_size": 4}
+    while True:
+        try:
+            query = input("📋 Soru: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n\nGüle güle!")
+            break
+
+        if not query:
+            continue
+        if query.lower() in ('q', 'quit', 'çık', 'exit'):
+            print("\nGüle güle!")
+            break
+        if query.lower() in ('stats', 'cache', 'durum'):
+            s = cache.stats()
+            print(f"\n📊 Sistem Durumu:")
+            print(f"   CAG toplam:      {s['total_entries']}")
+            print(f"   CAG aktif:       {s['active_entries']}")
+            print(f"   Süresi dolmuş:   {s['expired_entries']}")
+            print(f"   Toplam kullanım: {s['total_usage']}")
+            print(f"   Kaynaklar:       {s['sources']}")
+            print(f"   RAG belge:       {rag.index.ntotal}\n")
+            continue
+
+        print()
+        total_start = time.time()
+
+        # ── STEP 1: CAG Cache Search ─────────────────────────────
+        result = cache.search(query)
+
+        if result:
+            # === CACHE HIT ===
+            total_time = time.time() - total_start
+            print("⚡ CAG ÖNBELLEK SONUCU (Cache Hit)")
+            print(f"   Benzerlik:    {result['similarity']:.4f}")
+            print(f"   Güven:        {result['confidence']:.2f}")
+            print(f"   Kullanım:     {result['usage_count']}")
+            print(f"   Kaynak:       {result['source']}")
+            if result.get('matched_variant') and result['matched_variant'] != query:
+                print(f"   Eşleşen:      \"{result['matched_variant'][:60]}\"")
+            if result.get('law_refs'):
+                print(f"   Hukuki ref:   {result['law_refs']}")
+            print(f"\n{'─' * 55}")
+            print(result["answer"])
+            print(f"{'─' * 55}")
+            print(f"\n⏱  Süre: {total_time:.3f}s (önbellek)")
+
+        else:
+            # === CACHE MISS → RAG ===
+            print("🔍 CAG önbellekte bulunamadı → RAG pipeline çalıştırılıyor...")
+
+            # ── STEP 2: RAG Retrieval + LLM ──────────────────────
+            rag_result = rag.answer(query, top_k=5)
+
+            print(f"\n{'─' * 55}")
+            print(rag_result["answer"])
+            print(f"{'─' * 55}")
+
+            # Show retrieved documents
+            if rag_result["context_docs"]:
+                print(f"\n📄 RAG Bağlam Belgeleri ({len(rag_result['context_docs'])} parça):")
+                for i, doc in enumerate(rag_result["context_docs"][:3], 1):
+                    src = doc.get("source", "?")
+                    text_preview = doc["text"][:70] + "..."
+                    print(f"   {i}. [{src}] {text_preview} (skor: {doc['score']:.3f})")
+
+            # ── STEP 3: Store in CAG cache with TTL ──────────────
+            cache.add(
+                query=query,
+                answer=rag_result["answer"],
+                source="rag",
+                confidence=0.8,
+                ttl_days=90,
+            )
+            print(f"\n✅ Cevap CAG önbelleğe eklendi (toplam: {cache.index.ntotal}, TTL: 90 gün)")
+
+            total_time = time.time() - total_start
+            print(
+                f"\n⏱  Süre — RAG: {rag_result['rag_latency']:.2f}s | "
+                f"LLM: {rag_result['llm_latency']:.2f}s | "
+                f"Toplam: {total_time:.2f}s"
+            )
+
+        print()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Türk Hukuk RAG + CAG Hibrit Sistemi"
     )
-
-
-# -----------------------------
-# 3. İşlem Fonksiyonları
-# -----------------------------
-
-def process_pdf_fast(file_path: str):
-    loader = PyMuPDFLoader(file_path)
-    docs = loader.load()
-    for doc in docs:
-        doc.page_content = " ".join(doc.page_content.split())
-    return docs
-
-
-def ingest_pdf_to_vector_db(file_path):
-    """
-    Bu fonksiyon:
-    1. GPU Embedding yükler.
-    2. Vektörleri oluşturur.
-    3. GPU Embedding modelini YOK EDER.
-    """
-    # 1. PDF Oku
-    raw_docs = process_pdf_fast(file_path)
-
-    # 2. GPU Modelini Yükle
-    gpu_embeddings = get_gpu_embedding()
-
-    # 3. Semantic Chunking (GPU ile hızlıca)
-    text_splitter = SemanticChunker(
-        gpu_embeddings,
-        breakpoint_threshold_type="percentile"
+    parser.add_argument(
+        "--build",
+        action="store_true",
+        help="CAG önbellek ve RAG indeksini oluştur",
     )
-
-    with st.spinner("GPU ile parçalanıyor ve vektörleştiriliyor..."):
-        chunks = text_splitter.split_documents(raw_docs)
-
-    # 4. Veritabanına Yaz (Diske Kaydet)
-    # Eğer öncekileri silmek istersen bu bloğu aç:
-    if os.path.exists("./chroma_db_temp"):
-        shutil.rmtree("./chroma_db_temp")
-
-    vector_db = Chroma.from_documents(
-        documents=chunks,
-        embedding=gpu_embeddings,
-        collection_name="optimized_rag",
-        persist_directory="./chroma_db_temp"
+    parser.add_argument(
+        "--no-para",
+        action="store_true",
+        help="Paraphrase genişletme olmadan çalıştır",
     )
+    args = parser.parse_args()
 
-    st.toast(f"✅ {len(raw_docs)} sayfa işlendi. Şimdi VRAM temizleniyor...", icon="🧹")
-
-    # 5. KRİTİK ADIM: GPU Modelini ve Veritabanı bağlantısını öldür
-    del gpu_embeddings
-    del vector_db
-    del text_splitter
-    clear_gpu_memory()  # VRAM'i Ollama'ya geri veriyoruz
-
-    return True
+    if args.build:
+        do_build()
+    else:
+        interactive_mode(use_paraphrases=not args.no_para)
 
 
-def get_query_engine():
-    """
-    Sorgu motorunu CPU embedding ile hazırlar.
-    """
-    # CPU embedding modelini al (VRAM harcamaz)
-    cpu_embeddings = get_cpu_embedding()
-
-    # Diskteki veritabanını CPU modeliyle tekrar aç
-    vector_db = Chroma(
-        persist_directory="./chroma_db_temp",
-        embedding_function=cpu_embeddings,
-        collection_name="optimized_rag"
-    )
-
-    # Retrieval Ayarları
-    base_retriever = vector_db.as_retriever(search_kwargs={"k": 15})
-
-    # Reranker (Otomatik model indirmeli)
-    compressor = FlashrankRerank()
-
-    compression_retriever = ContextualCompressionRetriever(
-        base_compressor=compressor,
-        base_retriever=base_retriever
-    )
-
-    return compression_retriever
-
-
-def run_llm(context, query):
-    system_prompt = (
-        "Sen yardımsever bir asistansın. Verilen bağlama göre cevap ver.\n"
-        "Kurallar: [Sayfa X] referansı ver. Bilmiyorsan bilmiyorum de."
-    )
-    user_prompt = f"BAĞLAM:\n{context}\n\nSORU: {query}"
-
-    return ollama.chat(
-        model="llama3.1:8b",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        stream=True
-    )
-
-
-# -----------------------------
-# 4. Arayüz (Streamlit)
-# -----------------------------
-
-if "messages" not in st.session_state:
-    st.session_state["messages"] = []
-if "db_ready" not in st.session_state:
-    st.session_state["db_ready"] = False
-
-with st.sidebar:
-    st.header("📂 Dosya Yükleme")
-    uploaded_file = st.file_uploader("PDF Yükle", type=["pdf"])
-
-    if uploaded_file and not st.session_state["db_ready"]:
-        with st.status("🚀 İşleniyor (GPU Modu)...", expanded=True) as status:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                tmp_file.write(uploaded_file.read())
-                pdf_path = tmp_file.name
-
-            # Ağır işi yap ve VRAM'i temizle
-            ingest_pdf_to_vector_db(pdf_path)
-
-            st.session_state["db_ready"] = True
-            status.update(label="✅ Hazır! GPU Boşaltıldı.", state="complete", expanded=False)
-
-    if st.button("Sohbeti Sıfırla"):
-        st.session_state["messages"] = []
-        st.rerun()
-
-st.title("🧠 VRAM-Saver RAG")
-
-# Mesajları Göster
-for msg in st.session_state["messages"]:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-
-# Kullanıcı Sorgusu
-if prompt := st.chat_input("Sorunu sor..."):
-    if not st.session_state["db_ready"]:
-        st.error("Önce PDF yükle.")
-        st.stop()
-
-    st.session_state["messages"].append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    with st.chat_message("assistant"):
-        # Retrieval (CPU Embedder kullanır)
-        retriever = get_query_engine()
-        docs = retriever.invoke(prompt)[:5]
-
-        context_text = "\n\n".join([f"[Sayfa {d.metadata.get('page', '?')}]: {d.page_content}" for d in docs])
-
-        # Generation (LLM - GPU kullanır, çünkü Embedder sildiğimiz için yer var)
-        response_placeholder = st.empty()
-        full_response = ""
-        stream = run_llm(context_text, prompt)
-
-        for chunk in stream:
-            full_response += chunk['message']['content']
-            response_placeholder.markdown(full_response + "▌")
-
-        response_placeholder.markdown(full_response)
-
-        with st.expander("Kaynaklar"):
-            st.write(context_text)
-
-    st.session_state["messages"].append({"role": "assistant", "content": full_response})
+if __name__ == "__main__":
+    main()

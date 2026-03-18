@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Türk Hukuk AI — RAG + CAG</title>
+    <meta name="description" content="Türk Hukuk Yapay Zeka Asistanı — RAG + CAG Hibrit Sistemi">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #111827;
+            --bg-card: rgba(17, 24, 39, 0.7);
+            --bg-glass: rgba(255, 255, 255, 0.03);
+            --bg-glass-hover: rgba(255, 255, 255, 0.06);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-glow: rgba(99, 102, 241, 0.3);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent: #6366f1;
+            --accent-light: #818cf8;
+            --accent-glow: rgba(99, 102, 241, 0.15);
+            --green: #10b981;
+            --green-glow: rgba(16, 185, 129, 0.15);
+            --amber: #f59e0b;
+            --amber-glow: rgba(245, 158, 11, 0.15);
+            --red: #ef4444;
+            --blue: #3b82f6;
+            --blue-glow: rgba(59, 130, 246, 0.15);
+            --radius: 16px;
+            --radius-sm: 10px;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* ── Sidebar ─────────────────────────────────── */
+        .sidebar {
+            width: 320px;
+            min-width: 320px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            padding: 24px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 4px;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent), #a855f7);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .logo-text h1 {
+            font-size: 16px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--text-primary), var(--accent-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo-text span {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+
+        .sidebar-section {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .section-title {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        /* Stats cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .stat-card {
+            background: var(--bg-glass);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 12px;
+            transition: all 0.2s;
+        }
+
+        .stat-card:hover {
+            background: var(--bg-glass-hover);
+            border-color: var(--border-glow);
+        }
+
+        .stat-value {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-card.accent .stat-value {
+            color: var(--accent-light);
+        }
+
+        .stat-card.green .stat-value {
+            color: var(--green);
+        }
+
+        .stat-card.amber .stat-value {
+            color: var(--amber);
+        }
+
+        .stat-card.blue .stat-value {
+            color: var(--blue);
+        }
+
+        /* Upload area */
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius-sm);
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .upload-zone:hover,
+        .upload-zone.drag-over {
+            border-color: var(--accent);
+            background: var(--accent-glow);
+        }
+
+        .upload-zone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .upload-icon {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .upload-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .upload-text strong {
+            color: var(--accent-light);
+        }
+
+        .upload-hint {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+
+        .upload-status {
+            margin-top: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            display: none;
+        }
+
+        .upload-status.success {
+            display: block;
+            background: var(--green-glow);
+            color: var(--green);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .upload-status.error {
+            display: block;
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--red);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        /* Settings */
+        .setting-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+        }
+
+        .setting-row+.setting-row {
+            border-top: 1px solid var(--border);
+        }
+
+        .setting-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .setting-label small {
+            display: block;
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        input[type="range"] {
+            width: 80px;
+            accent-color: var(--accent);
+            height: 4px;
+        }
+
+        .slider-value {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--accent-light);
+            min-width: 32px;
+            text-align: right;
+        }
+
+        /* Toggle switch */
+        .toggle {
+            position: relative;
+            width: 40px;
+            height: 22px;
+        }
+
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background: var(--bg-glass);
+            border: 1px solid var(--border);
+            border-radius: 22px;
+            transition: 0.3s;
+        }
+
+        .toggle-slider:before {
+            content: '';
+            position: absolute;
+            height: 16px;
+            width: 16px;
+            left: 2px;
+            bottom: 2px;
+            background: var(--text-muted);
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+
+        .toggle input:checked+.toggle-slider {
+            background: var(--accent-glow);
+            border-color: var(--accent);
+        }
+
+        .toggle input:checked+.toggle-slider:before {
+            transform: translateX(18px);
+            background: var(--accent-light);
+        }
+
+        /* ── Main Chat Area ──────────────────────────── */
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .chat-header {
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--bg-secondary);
+        }
+
+        .chat-header h2 {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--green);
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            background: var(--green);
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 0.6;
+            }
+
+            50% {
+                opacity: 1;
+                box-shadow: 0 0 8px var(--green);
+            }
+        }
+
+        /* Messages */
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            max-width: 85%;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            align-self: flex-end;
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+        }
+
+        .message-bubble {
+            padding: 14px 18px;
+            border-radius: var(--radius);
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        .message.user .message-bubble {
+            background: linear-gradient(135deg, var(--accent), #7c3aed);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.assistant .message-bubble {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-bottom-left-radius: 4px;
+            color: var(--text-primary);
+        }
+
+        .message-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 6px;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .type-badge {
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .type-badge.cache {
+            background: var(--green-glow);
+            color: var(--green);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .type-badge.rag {
+            background: var(--blue-glow);
+            color: var(--blue);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+        }
+
+        .meta-separator {
+            color: var(--border);
+        }
+
+        /* Context docs accordion */
+        .context-docs {
+            margin-top: 10px;
+            border-top: 1px solid var(--border);
+            padding-top: 10px;
+        }
+
+        .context-toggle {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: color 0.2s;
+            font-family: inherit;
+        }
+
+        .context-toggle:hover {
+            color: var(--text-secondary);
+        }
+
+        .context-list {
+            display: none;
+            margin-top: 8px;
+        }
+
+        .context-list.open {
+            display: block;
+        }
+
+        .context-item {
+            padding: 8px 10px;
+            margin-top: 4px;
+            background: var(--bg-glass);
+            border-radius: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .context-source {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        /* Typing indicator */
+        .typing {
+            display: none;
+            align-self: flex-start;
+            padding: 14px 18px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            border-bottom-left-radius: 4px;
+        }
+
+        .typing.show {
+            display: flex;
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .typing-dots span {
+            width: 6px;
+            height: 6px;
+            background: var(--text-muted);
+            border-radius: 50%;
+            animation: typingBounce 1.4s infinite;
+        }
+
+        .typing-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typingBounce {
+
+            0%,
+            60%,
+            100% {
+                transform: translateY(0);
+                opacity: 0.4;
+            }
+
+            30% {
+                transform: translateY(-6px);
+                opacity: 1;
+            }
+        }
+
+        /* Welcome message */
+        .welcome {
+            text-align: center;
+            padding: 60px 40px;
+            max-width: 500px;
+            margin: auto;
+        }
+
+        .welcome-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .welcome h3 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, var(--text-primary), var(--accent-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .welcome p {
+            font-size: 14px;
+            color: var(--text-muted);
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+
+        .example-queries {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .example-query {
+            padding: 10px 14px;
+            background: var(--bg-glass);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: left;
+        }
+
+        .example-query:hover {
+            background: var(--bg-glass-hover);
+            border-color: var(--border-glow);
+            color: var(--text-primary);
+        }
+
+        /* Input area */
+        .input-area {
+            padding: 16px 24px;
+            border-top: 1px solid var(--border);
+            background: var(--bg-secondary);
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .input-wrapper textarea {
+            flex: 1;
+            background: var(--bg-glass);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 16px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+            resize: none;
+            outline: none;
+            min-height: 44px;
+            max-height: 120px;
+            transition: border-color 0.2s;
+            line-height: 1.5;
+        }
+
+        .input-wrapper textarea:focus {
+            border-color: var(--accent);
+        }
+
+        .input-wrapper textarea::placeholder {
+            color: var(--text-muted);
+        }
+
+        .send-btn {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, var(--accent), #7c3aed);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .send-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <div class="logo-icon">⚖️</div>
+                <div class="logo-text">
+                    <h1>Türk Hukuk AI</h1>
+                    <span>RAG + CAG Hibrit Sistem</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="sidebar-section">
+            <div class="section-title">Sistem Durumu</div>
+            <div class="stats-grid">
+                <div class="stat-card accent">
+                    <div class="stat-value" id="stat-cag">—</div>
+                    <div class="stat-label">CAG Kayıt</div>
+                </div>
+                <div class="stat-card blue">
+                    <div class="stat-value" id="stat-rag">—</div>
+                    <div class="stat-label">RAG Belge</div>
+                </div>
+                <div class="stat-card green">
+                    <div class="stat-value" id="stat-usage">—</div>
+                    <div class="stat-label">Kullanım</div>
+                </div>
+                <div class="stat-card amber">
+                    <div class="stat-value" id="stat-expired">—</div>
+                    <div class="stat-label">Süresi Dolmuş</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload -->
+        <div class="sidebar-section">
+            <div class="section-title">RAG Belge Yükleme</div>
+            <div class="upload-zone" id="upload-zone">
+                <input type="file" id="file-input" accept=".txt,.json,.csv,.md">
+                <div class="upload-icon">📄</div>
+                <div class="upload-text">
+                    <strong>Dosya seçin</strong> veya sürükleyin
+                </div>
+                <div class="upload-hint">.txt, .json, .csv, .md</div>
+            </div>
+            <div class="upload-status" id="upload-status"></div>
+        </div>
+
+        <!-- Settings -->
+        <div class="sidebar-section">
+            <div class="section-title">Ayarlar</div>
+            <div class="setting-row">
+                <div class="setting-label">
+                    Benzerlik Eşiği
+                    <small>Cache hit için minimum skor</small>
+                </div>
+                <div class="slider-container">
+                    <input type="range" id="threshold-slider" min="50" max="100" value="85">
+                    <span class="slider-value" id="threshold-value">0.85</span>
+                </div>
+            </div>
+            <div class="setting-row">
+                <div class="setting-label">
+                    Paraphrase
+                    <small>Soru genişletme (yavaş)</small>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" id="paraphrase-toggle">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="setting-row">
+                <div class="setting-label">
+                    LLM ile Geliştir
+                    <small>Cache hit yanıtını detaylandırır</small>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" id="refine-toggle">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="setting-row">
+                <div class="setting-label">
+                    KV Cache CAG
+                    <small>Önceden yüklenmiş VRAM bellek</small>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" id="kv-cag-toggle">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Chat -->
+    <main class="main">
+        <div class="chat-header">
+            <h2>💬 Sohbet</h2>
+            <div class="status-badge">
+                <div class="status-dot"></div>
+                Çevrimiçi
+            </div>
+        </div>
+
+        <div class="messages" id="messages">
+            <div class="welcome" id="welcome">
+                <div class="welcome-icon">⚖️</div>
+                <h3>Türk Hukuk AI Asistanı</h3>
+                <p>Türk hukuku hakkında sorularınızı sorabilirsiniz. Sistem önce önbellekte arar, bulamazsa RAG pipeline
+                    ile cevap üretir.</p>
+                <div class="example-queries">
+                    <button class="example-query" onclick="askExample(this)">Anayasa madde 1'e göre devlet şekli
+                        nedir?</button>
+                    <button class="example-query" onclick="askExample(this)">Egemenlik kime aittir?</button>
+                    <button class="example-query" onclick="askExample(this)">İş sözleşmesi fesih hakları
+                        nelerdir?</button>
+                    <button class="example-query" onclick="askExample(this)">Kişisel verilerin korunması kanunu neleri
+                        kapsar?</button>
+                </div>
+            </div>
+            <div class="typing" id="typing">
+                <div class="typing-dots">
+                    <span></span><span></span><span></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="input-area">
+            <div class="input-wrapper">
+                <textarea id="query-input" placeholder="Hukuki sorunuzu yazın..." rows="1"
+                    onkeydown="handleKeydown(event)"></textarea>
+                <button class="send-btn" id="send-btn" onclick="sendQuery()">➤</button>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const messagesEl = document.getElementById('messages');
+        const typingEl = document.getElementById('typing');
+        const welcomeEl = document.getElementById('welcome');
+        const queryInput = document.getElementById('query-input');
+        const sendBtn = document.getElementById('send-btn');
+        let isLoading = false;
+
+        // ── Auto-resize textarea ────────────────────
+        queryInput.addEventListener('input', () => {
+            queryInput.style.height = 'auto';
+            queryInput.style.height = Math.min(queryInput.scrollHeight, 120) + 'px';
+        });
+
+        // ── Keyboard ────────────────────────────────
+        function handleKeydown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendQuery();
+            }
+        }
+
+        // ── Example queries ─────────────────────────
+        function askExample(btn) {
+            queryInput.value = btn.textContent;
+            sendQuery();
+        }
+
+        // ── Format numbers ──────────────────────────
+        function fmtNum(n) {
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+            return n?.toString() || '—';
+        }
+
+        // ── Load stats ──────────────────────────────
+        async function loadStats() {
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+                document.getElementById('stat-cag').textContent = fmtNum(data.cache.total_entries);
+                document.getElementById('stat-rag').textContent = fmtNum(data.rag.total_chunks);
+                document.getElementById('stat-usage').textContent = fmtNum(data.cache.total_usage);
+                document.getElementById('stat-expired').textContent = fmtNum(data.cache.expired_entries);
+
+                // Sync settings
+                const threshold = Math.round(data.settings.threshold * 100);
+                document.getElementById('threshold-slider').value = threshold;
+                document.getElementById('threshold-value').textContent = data.settings.threshold.toFixed(2);
+                document.getElementById('paraphrase-toggle').checked = data.settings.paraphrases;
+                document.getElementById('refine-toggle').checked = data.settings.refine_cache;
+                document.getElementById('kv-cag-toggle').checked = data.settings.kv_cache_cag;
+            } catch (e) {
+                console.error('Stats load error:', e);
+            }
+        }
+
+        // ── Send query ──────────────────────────────
+        async function sendQuery() {
+            const query = queryInput.value.trim();
+            if (!query || isLoading) return;
+
+            // Hide welcome
+            if (welcomeEl) welcomeEl.style.display = 'none';
+
+            // Add user message
+            addMessage(query, 'user');
+            queryInput.value = '';
+            queryInput.style.height = 'auto';
+
+            // Show typing
+            isLoading = true;
+            sendBtn.disabled = true;
+            typingEl.classList.add('show');
+            scrollToBottom();
+
+            try {
+                const res = await fetch('/api/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query }),
+                });
+                const data = await res.json();
+
+                if (data.error) {
+                    addMessage('Hata: ' + data.error, 'assistant', { type: 'error' });
+                } else {
+                    addMessage(data.answer, 'assistant', data);
+                }
+
+                loadStats();  // Refresh stats
+            } catch (e) {
+                addMessage('Sunucuya bağlanılamadı. Lütfen sunucunun çalıştığından emin olun.', 'assistant', { type: 'error' });
+            } finally {
+                isLoading = false;
+                sendBtn.disabled = false;
+                typingEl.classList.remove('show');
+            }
+        }
+
+        // ── Add message to chat ─────────────────────
+        function addMessage(text, role, meta = {}) {
+            const msg = document.createElement('div');
+            msg.className = `message ${role}`;
+
+            let metaHtml = '';
+            if (role === 'assistant' && meta.type) {
+                const isCache = meta.type === 'cache' || meta.type === 'cache-refined' || meta.type === 'kv-cag';
+                const badge = meta.type === 'kv-cag'
+                    ? '<span class="type-badge cache" style="background:rgba(56,189,248,0.1);color:#38bdf8;border-color:rgba(56,189,248,0.2)">🎯 KV CACHE</span>'
+                    : (meta.type === 'cache-refined' ? '<span class="type-badge cache" style="background:rgba(168,85,247,0.1);color:#a855f7;border-color:rgba(168,85,247,0.2)">✨ CAG (Geliştirilmiş)</span>' : (isCache ? '<span class="type-badge cache">⚡ CAG</span>' : '<span class="type-badge rag">🔍 RAG</span>'));
+
+                const details = [];
+                if (isCache) {
+                    details.push(`Benzerlik: ${meta.similarity}`);
+                    details.push(`Güven: ${meta.confidence}`);
+                    details.push(`${meta.total_time}s`);
+                } else {
+                    details.push(`RAG: ${meta.rag_latency}s`);
+                    details.push(`LLM: ${meta.llm_latency}s`);
+                    details.push(`Toplam: ${meta.total_time}s`);
+                }
+
+                metaHtml = `<div class="message-meta">${badge} <span class="meta-separator">·</span> ${details.join(' <span class="meta-separator">·</span> ')}</div>`;
+
+                // ── Citations / References ──
+                if (isCache) {
+                    // CAG citation: show matched question + source dataset
+                    const matchedQ = meta.matched_query || '';
+                    const source = meta.source || '';
+                    if (matchedQ || source) {
+                        metaHtml += `
+                            <div class="context-docs">
+                                <button class="context-toggle" onclick="this.nextElementSibling.classList.toggle('open')">
+                                    📖 Kaynak referans göster ▾
+                                </button>
+                                <div class="context-list">
+                                    <div class="context-item">
+                                        <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">Eşleşen Soru</div>
+                                        ${matchedQ}
+                                        <div class="context-source">Kaynak: ${source}${meta.usage_count ? ' · Kullanım: ' + meta.usage_count : ''}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                } else if (meta.context_docs && meta.context_docs.length > 0) {
+                    // RAG citations: show retrieved source documents
+                    metaHtml += `
+                        <div class="context-docs">
+                            <button class="context-toggle" onclick="this.nextElementSibling.classList.toggle('open')">
+                                📖 ${meta.context_docs.length} kaynak referans göster ▾
+                            </button>
+                            <div class="context-list">
+                                ${meta.context_docs.map((d, i) => `
+                                    <div class="context-item">
+                                        <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">Kaynak ${i + 1}</div>
+                                        ${d.text}
+                                        <div class="context-source">
+                                            📁 ${d.source || 'Bilinmiyor'}
+                                            ${d.original_query ? ' · Orijinal soru: ' + d.original_query.substring(0, 80) + (d.original_query.length > 80 ? '...' : '') : ''}
+                                            · Skor: ${d.score}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            // Simple markdown-ish rendering
+            const rendered = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/`(.*?)`/g, '<code style="background:rgba(255,255,255,0.06);padding:2px 5px;border-radius:4px;font-size:13px">$1</code>')
+                .replace(/\n/g, '<br>');
+
+            msg.innerHTML = `
+                <div class="message-bubble">${rendered}</div>
+                ${metaHtml}
+            `;
+
+            // Insert before typing indicator
+            messagesEl.insertBefore(msg, typingEl);
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            requestAnimationFrame(() => {
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+            });
+        }
+
+        // ── File Upload ─────────────────────────────
+        const uploadZone = document.getElementById('upload-zone');
+        const fileInput = document.getElementById('file-input');
+        const uploadStatus = document.getElementById('upload-status');
+
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('drag-over');
+        });
+
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('drag-over');
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length > 0) {
+                uploadFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                uploadFile(fileInput.files[0]);
+                fileInput.value = '';
+            }
+        });
+
+        async function uploadFile(file) {
+            uploadStatus.className = 'upload-status';
+            uploadStatus.textContent = 'Yükleniyor...';
+            uploadStatus.style.display = 'block';
+            uploadStatus.style.background = 'var(--bg-glass)';
+            uploadStatus.style.color = 'var(--text-secondary)';
+            uploadStatus.style.border = '1px solid var(--border)';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const res = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    uploadStatus.className = 'upload-status success';
+                    uploadStatus.textContent = `✅ ${data.filename} — ${data.chunks_added} parça eklendi`;
+                    loadStats();
+                } else {
+                    uploadStatus.className = 'upload-status error';
+                    uploadStatus.textContent = `❌ ${data.error}`;
+                }
+            } catch (e) {
+                uploadStatus.className = 'upload-status error';
+                uploadStatus.textContent = '❌ Yükleme başarısız';
+            }
+
+            setTimeout(() => { uploadStatus.style.display = 'none'; }, 5000);
+        }
+
+        // ── Settings ────────────────────────────────
+        document.getElementById('threshold-slider').addEventListener('input', (e) => {
+            const val = (parseInt(e.target.value) / 100).toFixed(2);
+            document.getElementById('threshold-value').textContent = val;
+        });
+
+        document.getElementById('threshold-slider').addEventListener('change', (e) => {
+            const val = parseInt(e.target.value) / 100;
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ threshold: val }),
+            });
+        });
+
+        document.getElementById('paraphrase-toggle').addEventListener('change', (e) => {
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ paraphrases: e.target.checked }),
+            });
+        });
+
+        document.getElementById('refine-toggle').addEventListener('change', (e) => {
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refine_cache: e.target.checked }),
+            });
+        });
+
+        document.getElementById('kv-cag-toggle').addEventListener('change', async (e) => {
+            const isChecked = e.target.checked;
+            
+            // Sync setting with backend FIRST so stats don't overwrite it
+            await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kv_cache_cag: isChecked }),
+            });
+
+            if (isChecked) {
+                addMessage('KV Cache CAG aktif ediliyor. Model VRAM\'e yüklenirken lütfen bekleyin (10-30sn)...', 'assistant');
+                try {
+                    const res = await fetch('/api/warmup_kv', { method: 'POST' });
+                    const data = await res.json();
+                    if (data.success) {
+                        addMessage('✅ KV Cache başarıyla ısıtıldı ve VRAM\'e yüklendi. Artık yanıtlar anında üretilecek!', 'assistant');
+                        loadStats(); // Reload stats only AFTER warmup is done
+                    } else {
+                        addMessage('❌ KV Cache yüklenirken hata oluştu.', 'assistant', { type: 'error' });
+                        e.target.checked = false;
+                        
+                        // Revert backend config
+                        fetch('/api/settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ kv_cache_cag: false }),
+                        });
+                    }
+                } catch(error) {
+                    addMessage('❌ Sunucuya ulaşılamadı.', 'assistant', { type: 'error' });
+                    e.target.checked = false;
+                    fetch('/api/settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ kv_cache_cag: false }),
+                    });
+                }
+            }
+        });
+
+        // ── Init ────────────────────────────────────
+        loadStats();
+        queryInput.focus();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,6 @@
+# Legal RAG + CAG System — Dependencies
+ollama
+sentence-transformers
+faiss-cpu
+numpy
+flask
