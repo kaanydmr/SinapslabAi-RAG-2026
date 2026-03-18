@@ -52,7 +52,7 @@ Default olarak `http://127.0.0.1:5000` adresinde çalışacaktır.
 | Modül | Görev |
 |-------|-------|
 | `src/kv_cag_pipeline.py` |  VRAM tabanlı KV Cache yönetimi |
-| `src/cag_cache.py` | Semantik önbellek mantığı (CAG) |
+| `src/cag_cache.py` | KV cahe and Semantic cache (CAG) |
 | `src/rag_pipeline.py` | (RAG)  |
 | `src/vector_store.py` | FAISS vektör deposu işlemleri |
 | `src/validator.py` | LLM cevaplarının hukuki doğruluğunu kontrol eder |
