@@ -56,7 +56,7 @@ Default olarak `http://127.0.0.1:5000` adresinde çalışacaktır.
 | `src/rag_pipeline.py` | (RAG)  |
 | `src/vector_store.py` | FAISS vektör deposu işlemleri |
 | `src/validator.py` | LLM cevaplarının hukuki doğruluğunu kontrol eder |
-| `app.py` | Flask API ve Rota yönetimi |
+| `app.py` | Flask API  |
 
 ## (UI)
 
